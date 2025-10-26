@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NoteGo - Professional Scheduler</title>
+    <!-- PWA Manifest for Add to Home Screen --><meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-web-app-capable" content="yes">
+    <meta name="theme-color" content="#FFFFFF"> <!-- Primary light color --><!-- Load Tailwind CSS for styling --><script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for a sleeker look */
+        .custom-scroll::-webkit-scrollbar {
+            width: 8px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background-color: #BFDBFE; /* Blue-200 */
+            border-radius: 4px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: #F3F4F6; /* Gray-100 */
+        }
+        
+        /* Ensure input fields match the light theme */
+        input:not([type="checkbox"]), textarea {
+            color: #1F2937 !important; /* text-gray-900 */
+            border-color: #E5E7EB; /* Gray-200 */
+        }
+        
+        /* Font setup */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* Specific style for the Clock In/Out status box */
+        .status-box {
+            padding: 1.25rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1.5rem;
+            font-weight: 600;
+        }
+        
+        /* Transition for card effects */
+        .job-card-transition {
+            transition: all 0.3s ease-in-out;
+        }
+        .job-card-transition:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+        }
+        
+        /* FIX: Ensure the main content area has a definite height to enable internal scrolling */
+        #content-area {
+            min-height: 0; /* Crucial for flex containers */
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen p-4 sm:p-8 flex items-center justify-center">
+
+    <div id="app-card" class="relative w-full max-w-4xl h-[90vh] mx-auto rounded-xl shadow-2xl overflow-hidden bg-white flex flex-col">
+        <!-- Loading State --><div id="loading-screen" class="absolute inset-0 flex items-center justify-center bg-gray-50/90 z-50 text-gray-900">
+            <div class="text-center p-8 bg-white rounded-xl shadow-lg">
+                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                <p class="text-lg text-gray-700">Connecting to system...</p>
+            </div>
+        </div>
+
+        <!-- Header Bar (Static) --><header class="bg-white text-gray-900 p-4 sm:p-6 flex flex-col sm:flex-row justify-between items-center border-b border-gray-200 shadow-sm">
+            <h1 class="text-3xl font-extrabold text-blue-600 flex items-center">
+                <!-- Icon: Notebook/List --><svg class="w-8 h-8 mr-2 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+                </svg>
+                NoteGo
+            </h1>
+            <div class="flex items-center space-x-4 mt-2 sm:mt-0">
+                <span id="user-info" class="text-sm font-medium text-gray-600"></span>
+                <button id="signout-btn" class="px-3 py-1 text-xs font-semibold rounded-full shadow transition bg-red-500 text-white hover:bg-red-600" onclick="window.signOutUser()">
+                    Sign Out
+                </button>
+            </div>
+        </header>
+
+        <!-- Navigation Bar --><nav id="navbar" class="flex space-x-4 px-6 py-3 bg-gray-50 border-b border-gray-200 sticky top-0 z-20"></nav>
+        
+        <!-- Simulated Notifications/Productivity --><div id="alert-bar" class="p-4 bg-gray-50 border-b border-gray-200 flex justify-center flex-wrap gap-3">
+            <button onclick="handleSimulatedAlert('start')" class="px-3 py-1 text-xs bg-gray-200 text-gray-800 rounded-full hover:bg-gray-300 transition shadow-sm">
+                Shift Start Alert
+            </button>
+            <button onclick="handleSimulatedAlert('lunch')" class="px-3 py-1 text-xs bg-gray-200 text-gray-800 rounded-full hover:bg-gray-300 transition shadow-sm">
+                Lunch Alert
+            </button>
+            <button onclick="handleSimulatedAlert('schedule')" class="px-3 py-1 text-xs bg-gray-200 text-gray-800 rounded-full hover:bg-gray-300 transition shadow-sm">
+                Schedule Update
+            </button>
+        </div>
+
+        <!-- Main Content Area --><div id="content-area" class="flex-grow bg-white text-gray-800 custom-scroll overflow-y-auto p-6">
+            <!-- Content loaded via JS --></div>
+
+        <!-- Footer --><footer class="p-4 bg-white border-t border-gray-200 text-xs text-gray-500 text-center shadow-inner">
+            <p>**NoteGo** uses Google Firestore for real-time, persistent data storage. User IDs are simplified for demonstration.</p>
+        </footer>
+    </div>
+
+    <!-- Firebase SDK Imports and Core Application Logic --><script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        // Removed Auth imports as we use simplified local login now
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, getDoc, setDoc, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- GLOBAL STATE & CONSTANTS ---
+        const ADMIN_EMAIL = 'admin@notego.com'; // Designated Admin Email for this prototype
+        const ADMIN_KEY = '5339'; // UPDATED ADMIN KEY
+        
+        // FIX: Define appId as a static string since the secure global variable is not available
+        const appId = 'notego-pwa-app'; 
+        
+        // ** NOTE: Using dummy/local keys since user cannot access Firebase console **
+        const DUMMY_FIREBASE_CONFIG = {
+            apiKey: "DUMMY_KEY",
+            authDomain: "dummy-domain.firebaseapp.com",
+            projectId: "notego-demo-project",
+            storageBucket: "notego-demo-project.appspot.com",
+            messagingSenderId: "000000000000",
+            appId: "0:0:web:000000000000"
+        };
+        
+        let firebaseConfigSafe = DUMMY_FIREBASE_CONFIG;
+        
+        let db, auth;
+        let currentUserId = null;
+        let currentUserEmail = null;
+        let currentDisplayName = 'Worker';
+        let isUserWorker = true;
+        let currentView = sessionStorage.getItem('currentView') || 'schedule';
+        let jobsData = [];
+        let selectedJob = JSON.parse(sessionStorage.getItem('selectedJob')) || null;
+        let timesheetData = { status: 'ClockedOut', jobId: null, jobName: null, currentSessionStart: null, history: [] }; 
+        
+        // A simple function to generate a consistent dummy UID based on the email
+        const generateDummyUID = (email) => {
+            let hash = 0;
+            for (let i = 0; i < email.length; i++) {
+                hash = email.charCodeAt(i) + ((hash << 5) - hash);
+            }
+            let res = (hash & 0x00ffffff).toString(16).toUpperCase();
+            return "DUMMY_" + "00000".substring(0, 6 - res.length) + res;
+        };
+
+        // Sample Job Data for initial appearance (Admin role)
+        const defaultJobs = [
+            {
+                id: 'job_20251030_001',
+                name: 'Office Tower Reno - Phase 2',
+                client: 'City Development Group',
+                shiftDate: '2025-10-30',
+                shiftTime: '7:00 AM - 3:30 PM',
+                description: 'Install framing on floors 12 & 14. Coordinate lift usage.',
+                workerId: 'DUMMY_7875D6', // Consistent dummy Admin ID
+                status: 'Scheduled',
+                chatRoomId: 'chat_001',
+            },
+            {
+                id: 'job_20251026_002',
+                name: 'Residential Build - Smith Site',
+                client: 'Smith Family Residence',
+                shiftDate: '2025-10-26',
+                shiftTime: '9:00 AM - 5:00 PM',
+                description: 'Complete interior electrical rough-in and fixture mounting.',
+                workerId: 'DUMMY_7875D6', // Consistent dummy Admin ID
+                status: 'Scheduled',
+                chatRoomId: 'chat_002',
+            },
+            {
+                id: 'job_20251101_003',
+                name: 'Warehouse HVAC Upgrade',
+                client: 'Global Logistics Inc.',
+                shiftDate: '2025-11-01',
+                shiftTime: '8:00 AM - 4:00 PM',
+                description: 'Replace two roof-mounted HVAC units. Crane required at 8 AM.',
+                workerId: 'DUMMY_2B7C17', // Consistent dummy Worker ID
+                status: 'Completed',
+                chatRoomId: 'chat_003',
+            },
+        ];
+
+
+        const DB_PATHS = {
+            PUBLIC_JOBS: `artifacts/${appId}/public/data/jobs`,
+            PRIVATE_NOTES: (userId) => `artifacts/${appId}/users/${userId}/notes`,
+            PRIVATE_CHECKLIST: (userId) => `artifacts/${appId}/users/${userId}/checklist`,
+            CHAT_MESSAGES: (jobId) => `artifacts/${appId}/public/data/jobs/${jobId}/messages`,
+            PRIVATE_TIMESHEET: (userId) => `artifacts/${appId}/users/${userId}/timesheet/current`,
+        };
+
+        const navItems = [
+            { key: 'schedule', label: 'Schedule/Jobs', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>' },
+            { key: 'notes', label: 'Notes', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>' },
+            { key: 'checklist', label: 'Checklist', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path></svg>' },
+        ];
+
+        // --- AUTHENTICATION FUNCTIONS (SIMPLIFIED) ---
+
+        window.signOutUser = () => {
+            sessionStorage.removeItem('loggedInUserEmail');
+            window.location.reload(); // Simple refresh to show login screen
+        };
+        
+        window.handleAuthForm = (type) => {
+            const form = document.getElementById('auth-form');
+            const email = form.email.value.toLowerCase().trim();
+            const adminKeyInput = document.getElementById('admin-key-input');
+            const adminKey = adminKeyInput ? adminKeyInput.value : '';
+            const messageEl = document.getElementById('auth-message');
+            messageEl.textContent = ''; // Clear previous messages
+
+            if (!email.includes('@') || email.length < 5) {
+                messageEl.textContent = 'Please enter a valid email address.';
+                return;
+            }
+
+            // SIMPLIFIED LOGIN: Just check the email and the key for the role
+            currentUserEmail = email;
+            currentUserId = generateDummyUID(email);
+
+            let isError = false;
+
+            if (email === ADMIN_EMAIL) {
+                if (type === 'admin_login') {
+                    if (adminKey === ADMIN_KEY) {
+                        currentDisplayName = 'Admin';
+                        isUserWorker = false;
+                    } else {
+                        messageEl.textContent = 'Error: Invalid Admin Key.';
+                        isError = true;
+                    }
+                } else {
+                    // Admin trying to sign in via worker button
+                    messageEl.textContent = 'Error: Admin email must use the Admin Sign In button and key.';
+                    isError = true;
+                }
+            } else {
+                // Regular worker login (no key needed)
+                if (type === 'worker_login') {
+                    currentDisplayName = 'Worker';
+                    isUserWorker = true;
+                } else {
+                    // Worker trying to sign in via admin button without admin key
+                    messageEl.textContent = 'Error: Workers must use the Worker Sign In button.';
+                    isError = true;
+                }
+            }
+            
+            if (isError) return;
+
+            // Save state and refresh the app to full UI
+            sessionStorage.setItem('loggedInUserEmail', email);
+            window.location.reload(); 
+        };
+
+        const renderAuthScreen = () => {
+            document.getElementById('app-card').classList.add('flex', 'items-center', 'justify-center');
+            document.getElementById('loading-screen').classList.add('hidden');
+            
+            document.getElementById('signout-btn').classList.add('hidden');
+            document.getElementById('alert-bar').classList.add('hidden');
+
+            const contentArea = document.getElementById('content-area');
+            contentArea.className = 'flex-grow flex items-center justify-center p-6 bg-gray-50';
+            contentArea.innerHTML = `
+                <div class="w-full max-w-sm p-6 bg-white rounded-xl shadow-2xl border border-gray-100">
+                    <h2 class="text-3xl font-bold mb-6 text-gray-900 text-center">NoteGo Login</h2>
+                    
+                    <form id="auth-form" onsubmit="event.preventDefault()">
+                        <div class="space-y-4">
+                            <input type="email" name="email" 
+                                placeholder="Enter email" 
+                                required 
+                                class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 text-gray-900" 
+                                style="background-color: transparent !important; color: #1F2937 !important; z-index: 20;" 
+                                value="">
+                        </div>
+                        
+                        <p id="auth-message" class="text-sm text-center mt-4 text-red-500"></p>
+                        
+                        <div class="mt-6 space-y-3">
+                            <button type="button" onclick="window.handleAuthForm('worker_login')" class="w-full bg-blue-600 text-white font-bold py-3 rounded-lg shadow-lg hover:bg-blue-700 transition duration-150">
+                                Worker Sign In
+                            </button>
+
+                            <div class="border-t border-gray-200 pt-3 mt-3">
+                                <p class="text-sm font-semibold text-gray-700 mb-2">Admin Access (Requires Admin Key)</p>
+                                <input type="password" id="admin-key-input" placeholder="Admin Key" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900">
+                                <button type="button" onclick="window.handleAuthForm('admin_login')" class="w-full bg-gray-800 text-white font-bold py-3 rounded-lg shadow-lg hover:bg-black transition duration-150 mt-3">
+                                    Admin Sign In
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            `;
+        };
+
+        // --- UTILITY FUNCTIONS ---
+        window.handleSimulatedAlert = (type) => {
+            let message = '';
+            if (type === 'start') {
+                message = "⚠️ Shift Start Reminder: Your shift is starting now!";
+            } else if (type === 'lunch') {
+                message = "🍕 Lunch Break Alert! Don't forget to log your hour.";
+            } else if (type === 'schedule') {
+                message = "📅 New Schedule Delivered: Check the Schedule view.";
+            }
+            // Using a simple alert for simulated push notifications
+            alert(message); 
+        };
+        
+        window.changeView = (newView) => {
+            currentView = newView;
+            selectedJob = null;
+            sessionStorage.setItem('currentView', newView);
+            sessionStorage.removeItem('selectedJob');
+            renderContent();
+        };
+
+        const getInitials = (name) => {
+            if (!name) return 'U';
+            const parts = name.split(' ');
+            if (parts.length > 1) {
+                return (parts[0][0] + parts[1][0]).toUpperCase();
+            }
+            return name[0].toUpperCase();
+        };
+
+        // --- RENDER FUNCTIONS ---
+
+        const renderApp = () => {
+            // Hides loading screen when the app is ready to display
+            document.getElementById('loading-screen').classList.add('hidden');
+            
+            // Revert container styles from auth screen
+            document.getElementById('app-card').classList.remove('flex', 'items-center', 'justify-center');
+            document.getElementById('signout-btn').classList.remove('hidden');
+            document.getElementById('alert-bar').classList.remove('hidden');
+
+            // 1. Update User Info
+            document.getElementById('user-info').innerHTML = `
+                <strong class="text-gray-900">${currentDisplayName}</strong> 
+                <span class="text-xs text-gray-500">(${currentUserEmail})</span>
+            `;
+
+            // 2. Render Navigation
+            const navbar = document.getElementById('navbar');
+            const workerNav = [
+                ...navItems, 
+                { key: 'timesheet', label: 'My Timesheet', icon: '<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>'}
+            ];
+            
+            const navSource = isUserWorker ? workerNav : navItems;
+
+            navbar.innerHTML = navSource.map(item => `
+                <button
+                    onclick="changeView('${item.key}')"
+                    class="flex items-center px-4 py-2 text-lg font-semibold rounded-md transition-colors duration-200 ${
+                        currentView === item.key
+                            ? 'bg-blue-600 text-white shadow-md'
+                            : 'text-gray-600 hover:bg-gray-200 hover:text-blue-600'
+                    }"
+                >
+                    ${item.icon} <span class="hidden sm:inline ml-2">${item.label}</span>
+                </button>
+            `).join('');
+            
+            // 3. Render Content Area
+            renderContent();
+        };
+
+        const renderContent = () => {
+            const contentArea = document.getElementById('content-area');
+            // Reset content area styling back to default
+            contentArea.className = 'flex-grow bg-white text-gray-800 custom-scroll overflow-y-auto p-6';
+            
+            if (selectedJob && currentView === 'chat') {
+                renderChatView(contentArea);
+                return;
+            }
+
+            switch (currentView) {
+                case 'schedule':
+                    renderScheduleView(contentArea);
+                    break;
+                case 'timesheet':
+                    renderTimesheetView(contentArea);
+                    break;
+                case 'notes':
+                    renderNotesView(contentArea);
+                    break;
+                case 'checklist':
+                    renderChecklistView(contentArea);
+                    break;
+                default:
+                    renderScheduleView(contentArea);
+            }
+        };
+
+        // --- 1. SCHEDULE/JOB VIEW ---
+
+        const renderJobCard = (job) => {
+            // Worker assignment check based on authenticated user ID
+            const isAssigned = job.workerId === currentUserId;
+            
+            // Workers only see their assigned shifts
+            if (isUserWorker && !isAssigned) {
+                return '';
+            }
+            
+            const statusColor = job.status === 'Scheduled' ? 'bg-blue-100 text-blue-800 border-blue-200' : 
+                                job.status === 'Completed' ? 'bg-green-100 text-green-800 border-green-200' :
+                                'bg-gray-100 text-gray-800 border-gray-200';
+            
+            const date = new Date(job.shiftDate).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+
+            return `
+                <div class="p-5 border border-gray-200 rounded-xl shadow-lg job-card-transition bg-white">
+                    <div class="flex justify-between items-center mb-3">
+                        <h3 class="text-2xl font-bold text-gray-900 truncate">${job.name}</h3>
+                        <span class="text-xs font-semibold px-3 py-1 rounded-full border ${statusColor}">
+                            ${job.status}
+                        </span>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-y-2 text-sm text-gray-600 mb-4 border-t border-b py-2">
+                        <div>
+                            <strong class="text-blue-600 block">Client</strong> 
+                            ${job.client}
+                        </div>
+                        <div>
+                            <strong class="text-blue-600 block">Date</strong> 
+                            ${date}
+                        </div>
+                        <div>
+                            <strong class="text-blue-600 block">Time</strong> 
+                            ${job.shiftTime}
+                        </div>
+                        <div>
+                            <strong class="text-blue-600 block">Assigned ID</strong> 
+                            ${job.workerId.substring(0, 8)}...
+                        </div>
+                    </div>
+
+                    <p class="text-sm text-gray-700 mb-4">
+                        <strong class="font-semibold text-gray-900">Duty:</strong> ${job.description}
+                    </p>
+                    <button 
+                        onclick="window.selectJob(${JSON.stringify(job).replace(/"/g, '&quot;')})"
+                        class="w-full bg-blue-600 text-white text-md font-semibold py-3 rounded-lg shadow-md hover:bg-blue-700 transition duration-150 transform hover:scale-[1.01]"
+                    >
+                        View Details & Chat
+                    </button>
+                </div>
+            `;
+        };
+
+        window.selectJob = (job) => {
+            selectedJob = job;
+            sessionStorage.setItem('selectedJob', JSON.stringify(job));
+            currentView = 'chat';
+            renderContent();
+        };
+
+        const renderJobCreationForm = () => {
+            // Only Admin sees this form
+            if (isUserWorker) return '';
+
+            return `
+                <div class="p-6 bg-gray-50 rounded-xl shadow-inner mt-6">
+                    <h3 class="text-xl font-bold mb-4 text-gray-800 border-b pb-2">➕ Create New Shift</h3>
+                    <form id="job-creation-form" class="space-y-4">
+                        <input type="text" name="name" placeholder="Job Name" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900" value="New Project">
+                        <input type="text" name="client" placeholder="Client/Project" required class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900" value="New Client">
+                        <div class="grid grid-cols-2 gap-4">
+                            <input type="date" name="shiftDate" required class="p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900" value="${new Date().toISOString().slice(0, 10)}">
+                            <input type="text" name="shiftTime" placeholder="Time (e.g., 9:00 AM - 5:00 PM)" required class="p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900" value="9:00 AM - 5:00 PM">
+                        </div>
+                        <textarea name="description" placeholder="Brief shift description/tasks" rows="3" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900">Standard task list</textarea>
+                        <p class="text-sm text-gray-500 italic">Worker ID for this shift: ${currentUserId.substring(0, 8)}... (Self-assigned for prototype)</p>
+                        <button type="submit" class="w-full bg-blue-700 text-white font-bold py-3 rounded-lg shadow-lg hover:bg-blue-800 transition duration-150">
+                            Schedule Shift
+                        </button>
+                        <p id="job-message" class="text-center text-sm text-green-600 font-semibold hidden"></p>
+                    </form>
+                </div>
+            `;
+        };
+
+        const attachJobFormListener = () => {
+            const form = document.getElementById('job-creation-form');
+            if (!form) return;
+
+            form.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const btn = form.querySelector('button[type="submit"]');
+                const messageEl = document.getElementById('job-message');
+                btn.disabled = true;
+                btn.textContent = 'Submitting...';
+                messageEl.classList.add('hidden');
+
+                const formData = new FormData(form);
+                const jobData = {
+                    name: formData.get('name'),
+                    client: formData.get('client'),
+                    shiftDate: formData.get('shiftDate'),
+                    shiftTime: formData.get('shiftTime'),
+                    description: formData.get('description'),
+                    workerId: currentUserId,
+                    status: 'Scheduled',
+                    chatRoomId: `chat_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+                    createdAt: serverTimestamp(),
+                };
+
+                try {
+                    await addDoc(collection(db, DB_PATHS.PUBLIC_JOBS), jobData);
+                    messageEl.textContent = 'Job successfully created!';
+                    messageEl.classList.remove('hidden');
+                    form.reset();
+                } catch (e) {
+                    console.error("Error adding document: ", e);
+                    messageEl.textContent = 'Failed to create job.';
+                    messageEl.classList.remove('hidden');
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = 'Schedule Shift';
+                }
+            });
+        };
+
+        const renderClockInOutSection = () => {
+            if (!isUserWorker) return '';
+
+            const status = timesheetData.status;
+            const statusClass = status === 'ClockedIn' ? 'bg-green-50 text-green-700 border-green-300' :
+                                status === 'OnBreak' ? 'bg-yellow-50 text-yellow-700 border-yellow-300' :
+                                'bg-gray-50 text-gray-700 border-gray-300';
+            
+            const lastTime = timesheetData.lastActionTime ? new Date(timesheetData.lastActionTime.toDate()).toLocaleTimeString() : 'N/A';
+            const currentJobName = timesheetData.jobName || 'N/A';
+
+            const jobOptions = jobsData.filter(job => job.workerId === currentUserId).map(job => 
+                `<option value="${job.id}" data-name="${job.name}" ${timesheetData.jobId === job.id ? 'selected' : ''}>${job.name} (${job.shiftDate})</option>`
+            ).join('');
+
+            return `
+                <div class="p-6 bg-white border-b border-gray-200">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">⏱️ Clock In/Out Center</h3>
+
+                    <div class="status-box ${statusClass} flex justify-between items-center">
+                        <div>
+                            <p class="text-sm">Current Status:</p>
+                            <p class="text-xl font-extrabold">${status}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-sm">Job:</p>
+                            <p class="text-md font-bold">${currentJobName}</p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <select id="job-select" class="flex-grow p-3 border border-gray-300 rounded-lg bg-white text-gray-900 shadow-inner" ${status !== 'ClockedOut' ? 'disabled' : ''}>
+                            <option value="">-- Select Job to Clock Into --</option>
+                            ${jobOptions}
+                        </select>
+                        <button id="clock-btn" class="flex-shrink-0 bg-blue-600 text-white font-extrabold py-3 px-6 rounded-lg shadow-md hover:bg-blue-700 transition transform hover:scale-[1.01]">
+                            ${status === 'ClockedIn' ? 'Clock Out' : 'Clock In'}
+                        </button>
+                    </div>
+                </div>
+            `;
+        };
+
+        const attachClockInOutListeners = () => {
+            if (!isUserWorker) return;
+
+            const clockBtn = document.getElementById('clock-btn');
+            const jobSelect = document.getElementById('job-select');
+            if (!clockBtn || !jobSelect) return;
+
+            const timesheetDocRef = doc(db, DB_PATHS.PRIVATE_TIMESHEET(currentUserId));
+
+            const handleClockAction = async () => {
+                const status = timesheetData.status;
+                const now = serverTimestamp();
+
+                if (status === 'ClockedOut') {
+                    const jobId = jobSelect.value;
+                    if (!jobId) {
+                        alert("Please select a job before clocking in.");
+                        return;
+                    }
+                    const jobName = jobSelect.options[jobSelect.selectedIndex]?.getAttribute('data-name');
+                    
+                    // CLOCK IN: Store session start time
+                    await setDoc(timesheetDocRef, {
+                        status: 'ClockedIn',
+                        jobId: jobId,
+                        jobName: jobName,
+                        lastActionTime: now,
+                        currentSessionStart: now, // <-- CRUCIAL: Store start time for later calculation
+                        history: timesheetData.history || [], 
+                    });
+                } else if (status === 'ClockedIn' || status === 'OnBreak') {
+                    // CLOCK OUT: Log history entry
+                    const startTimestamp = timesheetData.currentSessionStart;
+                    const endTimestamp = now;
+                    const actionTime = new Date();
+                    
+                    const newHistoryEntry = {
+                        action: 'Shift Logged',
+                        jobId: timesheetData.jobId,
+                        jobName: timesheetData.jobName,
+                        start: startTimestamp,
+                        end: endTimestamp,
+                        loggedOutTime: actionTime.toLocaleString(),
+                    };
+                    
+                    await updateDoc(timesheetDocRef, {
+                        status: 'ClockedOut',
+                        jobId: null,
+                        jobName: null,
+                        lastActionTime: now,
+                        currentSessionStart: null, // Clear the start time
+                        history: [...(timesheetData.history || []), newHistoryEntry]
+                    });
+                }
+            };
+
+            clockBtn.onclick = handleClockAction;
+        };
+        
+        const renderScheduleView = (contentArea) => {
+            const jobsHtml = jobsData.map(renderJobCard).join('');
+            
+            // FIX: Removed the outer redundant 'div class="p-0"' to rely entirely on the contentArea's scrolling.
+            contentArea.innerHTML = `
+                ${isUserWorker ? renderClockInOutSection() : ''}
+                <div class="p-6">
+                    <h2 class="text-3xl font-bold mb-4 text-gray-800 border-b pb-2">
+                        🗓️ ${isUserWorker ? 'My Upcoming Shifts' : 'Job Information Log'}
+                    </h2>
+                    
+                    ${renderJobCreationForm()}
+
+                    <div class="mt-8 space-y-6">
+                        ${jobsData.length === 0 ? '<p class="text-gray-500 italic">No shifts found.</p>' : jobsHtml}
+                    </div>
+                </div>
+            `;
+            attachJobFormListener();
+            attachClockInOutListeners();
+        };
+
+        // --- 2. NOTES VIEW ---
+
+        const renderNotesView = async (contentArea) => {
+            contentArea.innerHTML = `
+                <div class="flex flex-col h-full bg-white p-6 rounded-xl shadow-inner border border-gray-100">
+                    <h2 class="text-3xl font-bold mb-4 text-gray-800 border-b pb-2">✍️ My Notes</h2>
+                    <textarea id="notes-textarea" class="flex-grow w-full border border-gray-300 rounded-lg p-4 text-gray-900 bg-gray-50 text-lg leading-relaxed focus:ring-blue-500 focus:border-blue-500 outline-none resize-none shadow-inner" placeholder="Start writing your private notes here..."></textarea>
+                    <p id="notes-status" class="text-sm text-right text-gray-500 mt-2">Loading...</p>
+                </div>
+            `;
+
+            const textarea = document.getElementById('notes-textarea');
+            const statusEl = document.getElementById('notes-status');
+            const docRef = doc(db, DB_PATHS.PRIVATE_NOTES(currentUserId), 'main');
+
+            const loadNote = async () => {
+                const docSnap = await getDoc(docRef);
+                if (docSnap.exists()) {
+                    textarea.value = docSnap.data().content || '';
+                }
+                statusEl.textContent = 'Ready to save.';
+            };
+            await loadNote();
+
+            let saveTimeout;
+            textarea.addEventListener('input', () => {
+                statusEl.textContent = 'Typing...';
+                clearTimeout(saveTimeout);
+                
+                saveTimeout = setTimeout(async () => {
+                    statusEl.textContent = 'Saving...';
+                    try {
+                        await setDoc(docRef, { 
+                            content: textarea.value, 
+                            lastUpdated: serverTimestamp() 
+                        }, { merge: true });
+                        statusEl.textContent = 'Saved to Cloud.';
+                    } catch (e) {
+                        console.error("Error saving note: ", e);
+                        statusEl.textContent = 'Save Failed!';
+                    }
+                }, 1000);
+            });
+        };
+
+        // --- 3. CHECKLIST VIEW ---
+
+        const renderChecklistView = async (contentArea) => {
+            const itemsDocRef = doc(db, DB_PATHS.PRIVATE_CHECKLIST(currentUserId), 'items');
+
+            contentArea.innerHTML = `
+                <div class="p-6 bg-white rounded-xl shadow-inner border border-gray-100">
+                    <h2 class="text-3xl font-bold mb-6 text-gray-800 border-b pb-2">✅ Daily Checklist</h2>
+
+                    <form id="checklist-form" class="mb-6 flex gap-2 shadow-md rounded-lg overflow-hidden">
+                        <input type="text" id="new-item-text" placeholder="Add a new duty..." class="flex-grow p-3 border-none focus:ring-0 bg-gray-50 text-gray-900">
+                        <button type="submit" class="bg-blue-600 text-white font-semibold px-4 py-2 hover:bg-blue-700 transition duration-150">Add</button>
+                    </form>
+
+                    <ul id="checklist-items" class="space-y-3">
+                        <p class="text-gray-500 italic">Loading checklist...</p>
+                    </ul>
+                </div>
+            `;
+            
+            const itemsList = document.getElementById('checklist-items');
+            
+            const updateChecklist = async (newItems) => {
+                try {
+                    await setDoc(itemsDocRef, { items: newItems }, { merge: true });
+                } catch (e) {
+                    console.error("Error updating checklist: ", e);
+                }
+            };
+            
+            // Real-time listener for checklist items
+            onSnapshot(itemsDocRef, (docSnap) => {
+                let items = [];
+                if (docSnap.exists()) {
+                    items = docSnap.data().items || [];
+                }
+
+                itemsList.innerHTML = items.length === 0 
+                    ? '<p class="text-gray-500 italic">No duties loaded.</p>' 
+                    : items.map(item => `
+                        <li class="flex items-center justify-between p-3 transition duration-150 rounded-lg hover:bg-gray-100 border border-gray-200 shadow-sm">
+                            <div class="flex items-center">
+                                <input type="checkbox" id="item-${item.id}" ${item.completed ? 'checked' : ''} 
+                                    onchange="window.toggleChecklistItem(${item.id}, this.checked)"
+                                    class="h-5 w-5 text-blue-600 border-gray-300 rounded focus:ring-blue-500 cursor-pointer">
+                                <span class="ml-3 text-lg text-gray-800 ${item.completed ? 'line-through text-gray-500 italic' : ''}">
+                                    ${item.text}
+                                </span>
+                            </div>
+                            <button onclick="window.deleteChecklistItem(${item.id})" class="text-gray-400 hover:text-red-500 p-1 rounded-full transition-colors" aria-label="Delete item">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                        </li>
+                    `).join('');
+
+                window.toggleChecklistItem = (id, completed) => {
+                    const updatedItems = items.map(item =>
+                        item.id === id ? { ...item, completed: completed } : item
+                    );
+                    updateChecklist(updatedItems);
+                };
+
+                window.deleteChecklistItem = (id) => {
+                    const updatedItems = items.filter(item => item.id !== id);
+                    updateChecklist(updatedItems);
+                };
+            }, (error) => console.error("Error listening to checklist:", error));
+            
+            // Add new item listener
+            document.getElementById('checklist-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const inputEl = document.getElementById('new-item-text');
+                const text = inputEl.value.trim();
+                
+                if (text === '') return;
+                
+                const docSnap = await getDoc(itemsDocRef);
+                let items = docSnap.exists() ? docSnap.data().items || [] : [];
+
+                const newItem = {
+                    id: Date.now(),
+                    text: text,
+                    completed: false,
+                };
+                items.push(newItem);
+                await updateChecklist(items);
+                inputEl.value = '';
+            });
+        };
+        
+        // --- 4. TIMESHEET HISTORY VIEW ---
+        
+        const renderTimesheetView = (contentArea) => {
+            if (!isUserWorker) {
+                contentArea.innerHTML = '<div class="p-6 text-center text-lg text-red-600">This view is restricted to workers. (Admin Timesheet Report coming soon!)</div>';
+                return;
+            }
+
+            const history = timesheetData.history || [];
+
+            const calculateDuration = (start, end) => {
+                if (!start || !end) return 'N/A';
+
+                // Firestore timestamps are stored as Firebase Timestamps (objects) which have a toDate() method.
+                const startTime = start.toDate().getTime();
+                const endTime = end.toDate().getTime();
+                const diff = endTime - startTime;
+
+                const hours = Math.floor(diff / (1000 * 60 * 60));
+                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                
+                return `${hours}h ${minutes}m`;
+            };
+
+            const historyHtml = history.slice().reverse().map(entry => {
+                // Check if start/end are valid Firebase Timestamps before calling toDate()
+                if (!entry.start || !entry.end) return ''; 
+
+                const startTimeStr = entry.start.toDate().toLocaleTimeString();
+                const endTimeStr = entry.end.toDate().toLocaleTimeString();
+                const duration = calculateDuration(entry.start, entry.end);
+
+                return `
+                    <div class="p-4 bg-gray-50 border border-gray-200 rounded-lg shadow-sm grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm">
+                        <div class="col-span-2 sm:col-span-1">
+                            <strong class="text-blue-600 block">Job:</strong> ${entry.jobName}
+                        </div>
+                        <div class="text-center">
+                            <strong class="text-gray-700 block">Date:</strong> ${new Date(entry.start.toDate()).toLocaleDateString()}
+                        </div>
+                        <div class="text-center">
+                            <strong class="text-green-600 block">Shift Time:</strong> ${startTimeStr} - ${endTimeStr}
+                        </div>
+                        <div class="text-right font-bold text-lg text-blue-800">
+                            <strong class="text-gray-700 text-sm block">Duration:</strong> ${duration}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            contentArea.innerHTML = `
+                <div class="p-6 bg-white rounded-xl shadow-inner border border-gray-100">
+                    <h2 class="text-3xl font-bold mb-6 text-gray-800 border-b pb-2">⏰ My Timesheet History</h2>
+                    <div class="space-y-4">
+                        ${history.length === 0 ? '<p class="text-gray-500 italic">No shifts have been logged yet.</p>' : historyHtml}
+                    </div>
+                </div>
+            `;
+        };
+
+        // --- 5. CHAT VIEW ---
+
+        window.backFromChat = () => {
+            selectedJob = null;
+            currentView = 'schedule';
+            sessionStorage.removeItem('selectedJob');
+            renderContent();
+        };
+
+        const renderChatView = (contentArea) => {
+            // Static structure for chat
+            contentArea.innerHTML = `
+                <div class="flex flex-col h-full bg-gray-100 rounded-lg shadow-inner">
+                    <div class="p-4 border-b border-gray-200 bg-white flex justify-between items-center sticky top-0 z-20 shadow-sm">
+                        <button onclick="window.backFromChat()" class="text-blue-600 hover:text-blue-700 font-semibold flex items-center transition">
+                            <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                            Back
+                        </button>
+                        <div class="text-center flex-grow mx-4">
+                            <h2 class="text-xl font-bold text-gray-900 truncate leading-tight">💬 ${selectedJob.name} Chat</h2>
+                            <p class="text-xs text-gray-500">Job ID: ${selectedJob.id.substring(0, 8)}...</p>
+                        </div>
+                        <span id="tts-loading" class="text-sm text-gray-400 animate-pulse hidden"></span>
+                    </div>
+
+                    <!-- Message Area --><div id="messages-area" class="flex-grow p-4 space-y-4 overflow-y-auto custom-scroll">
+                        <!-- Messages loaded via listener --></div>
+
+                    <!-- Input Area --><div class="p-4 border-t border-gray-200 bg-white sticky bottom-0 z-20 shadow-md">
+                        <form id="chat-form" class="flex gap-3">
+                            <input id="chat-input" type="text" placeholder="Message team members..." class="flex-grow p-3 border border-gray-300 rounded-full focus:ring-blue-500 focus:border-blue-500 bg-white text-gray-900 shadow-inner">
+                            <button type="submit" class="bg-blue-700 text-white font-bold px-5 py-2 rounded-full shadow-lg hover:bg-blue-800 transition duration-150">Send</button>
+                        </form>
+                    </div>
+                </div>
+            `;
+
+            const messagesArea = document.getElementById('messages-area');
+            const chatRef = collection(db, DB_PATHS.CHAT_MESSAGES(selectedJob.id));
+            const q = query(chatRef, orderBy('timestamp'));
+
+            // Real-time listener for messages
+            onSnapshot(q, (snapshot) => {
+                const messages = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    timestamp: doc.data().timestamp?.toDate(),
+                }));
+                
+                messagesArea.innerHTML = messages.map(msg => {
+                    const isMine = msg.senderId === currentUserId;
+                    const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Sending...';
+                    const initials = getInitials(msg.senderName);
+
+                    return `
+                        <div class="flex ${isMine ? 'justify-end' : 'justify-start'}">
+                            
+                            ${!isMine ? `
+                                <div class="w-8 h-8 rounded-full ${msg.senderName === 'Admin' ? 'bg-gray-700' : 'bg-blue-600'} text-white flex items-center justify-center text-xs font-bold shadow-md mr-2 flex-shrink-0 self-start mt-1">
+                                    ${initials}
+                                </div>
+                            ` : ''}
+
+                            <div class="flex flex-col max-w-xs sm:max-w-md ${isMine ? 'items-end' : 'items-start'}">
+                                ${!isMine ? `<p class="text-xs font-semibold text-gray-600 mb-1">${msg.senderName}</p>` : ''}
+                                <div class="p-3 rounded-2xl shadow-lg ${
+                                    isMine 
+                                        ? 'bg-blue-500 text-white rounded-br-md' 
+                                        : 'bg-gray-200 text-gray-800 rounded-tl-md'
+                                }">
+                                    <p class="text-base break-words">${msg.text}</p>
+                                </div>
+                                <p class="text-right text-xs mt-1 text-gray-500">${time}</p>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                // Scroll to bottom
+                messagesArea.scrollTop = messagesArea.scrollHeight;
+            }, (error) => console.error("Error listening to messages:", error));
+
+            // Message submission
+            document.getElementById('chat-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const inputEl = document.getElementById('chat-input');
+                const text = inputEl.value.trim();
+                
+                if (text === '') return;
+
+                try {
+                    await addDoc(chatRef, {
+                        text: text,
+                        senderId: currentUserId,
+                        senderName: currentDisplayName,
+                        timestamp: serverTimestamp(),
+                    });
+                    inputEl.value = '';
+                } catch (e) {
+                    console.error("Error sending message: ", e);
+                }
+            });
+        };
+
+
+        // --- FIREBASE INITIALIZATION & MAIN FLOW ---
+        
+        // Initialization using the robust config
+        try {
+            const app = initializeApp(firebaseConfigSafe);
+            db = getFirestore(app);
+            // Auth initialization is simplified
+            auth = getAuth(app);
+            
+            // This listener must wait for the userId to be set after auth
+            const initializeListeners = (userId) => {
+                // Timesheet Listener
+                const userTimesheetDocRef = doc(db, DB_PATHS.PRIVATE_TIMESHEET(userId));
+                onSnapshot(userTimesheetDocRef, (docSnap) => {
+                    timesheetData = docSnap.exists() ? docSnap.data() : { status: 'ClockedOut', jobId: null, jobName: null, currentSessionStart: null, history: [] };
+                    renderContent(); // Re-render content to update Clock In/Out status
+                }, (error) => console.error("Error listening to timesheet:", error));
+
+
+                // Jobs Listener (Public Data)
+                const jobsColRef = collection(db, DB_PATHS.PUBLIC_JOBS);
+                const q = query(jobsColRef, orderBy('shiftDate', 'desc'));
+
+                onSnapshot(q, (snapshot) => {
+                    jobsData = snapshot.docs.map(doc => ({
+                        id: doc.id,
+                        ...doc.data()
+                    }));
+                    
+                    // FALLBACK: If Firestore is empty, use sample data. Otherwise, use live data.
+                    if (jobsData.length === 0) {
+                        jobsData = defaultJobs;
+                    }
+                    
+                    // Assign sample jobs to the currently logged in user based on role
+                    jobsData = jobsData.map(job => {
+                        const isWorkerJob = job.workerId === 'DUMMY_2B7C17'; // Worker ID in default jobs
+                        const isAdminJob = job.workerId === 'DUMMY_7875D6'; // Admin ID in default jobs
+
+                        if (isUserWorker && isWorkerJob) {
+                            return { ...job, workerId: currentUserId };
+                        }
+                        if (!isUserWorker && isAdminJob) {
+                            return { ...job, workerId: currentUserId };
+                        }
+                        return job;
+                    });
+
+
+                    renderContent(); // Refresh content when job data changes
+                }, (error) => console.error("Error listening to jobs:", error));
+            }
+
+            // --- SIMPLIFIED LOGIN CHECK ---
+            const storedEmail = sessionStorage.getItem('loggedInUserEmail');
+
+            if (storedEmail) {
+                // User is "logged in" based on local session storage
+                currentUserEmail = storedEmail;
+                currentUserId = generateDummyUID(storedEmail);
+                
+                if (storedEmail.toLowerCase() === ADMIN_EMAIL) {
+                    currentDisplayName = 'Admin';
+                    isUserWorker = false;
+                } else {
+                    currentDisplayName = 'Worker';
+                    isUserWorker = true;
+                }
+                
+                // RENDER UI and START LISTENERS
+                renderApp(); 
+                initializeListeners(currentUserId);
+                
+                // Sign in anonymously to ensure Firestore security rules pass
+                signInAnonymously(auth).catch(e => console.error("Anon sign-in error (expected with dummy key):", e));
+
+
+            } else {
+                // No user in session storage, show login screen
+                renderAuthScreen();
+            }
+
+            // *** FAILSAFE FIX ***
+            setTimeout(() => {
+                const loadingScreen = document.getElementById('loading-screen');
+                // Hide the loading screen if it's still visible after a short time
+                if (loadingScreen && !loadingScreen.classList.contains('hidden')) {
+                    loadingScreen.classList.add('hidden');
+                    if (!sessionStorage.getItem('loggedInUserEmail')) {
+                        // If no user is logged in after timeout, force the auth screen render
+                        renderAuthScreen();
+                    }
+                }
+            }, 100); // Very short timeout now
+            
+        } catch (error) {
+            console.error("FATAL ERROR: Could not initialize Firebase:", error);
+            document.getElementById('loading-screen').innerHTML = '<p class="text-red-600">FATAL ERROR: Initialization failed. See console for details.</p>';
+        }
+
+    </script>
+</body>
+</html>
